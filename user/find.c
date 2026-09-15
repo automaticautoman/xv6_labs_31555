@@ -4,6 +4,11 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
+// Regex helpers (copied from user/grep.c).
+int match(char *, char *);
+int matchhere(char *, char *);
+int matchstar(int, char *, char *);
+
 static char*
 basename(char *path)
 {
@@ -13,13 +18,13 @@ basename(char *path)
   return p + 1;
 }
 
-// -exec state (populated by main).
+// NEW: -exec state
 static int do_exec = 0;
 static char *exec_cmd = 0;
 static char **exec_args = 0;
 static int exec_argc = 0;
 
-// Called for every match: either print, or fork+exec the command with the path appended.
+// NEW: handle a match (print, or fork+exec)
 static void
 handle_match(char *path)
 {
@@ -69,12 +74,14 @@ find(char *path, char *target)
 
   switch(st.type){
   case T_FILE:
-    if(strcmp(basename(path), target) == 0)
+    // CHANGED: regex match instead of strcmp
+    if(match(target, basename(path)))
       handle_match(path);
     break;
 
   case T_DIR:
-    if(strcmp(basename(path), target) == 0)
+    // CHANGED: regex match instead of strcmp
+    if(match(target, basename(path)))
       handle_match(path);
 
     if(strlen(path) + 1 + DIRSIZ + 1 > sizeof(buf)){
@@ -106,7 +113,6 @@ main(int argc, char *argv[])
     exit(1);
   }
 
-  // Optional -exec cmd args...
   if(argc > 3){
     if(strcmp(argv[3], "-exec") != 0 || argc < 5){
       fprintf(2, "usage: find path name [-exec cmd args...]\n");
@@ -120,4 +126,42 @@ main(int argc, char *argv[])
 
   find(argv[1], argv[2]);
   exit(0);
+}
+
+// ===== Regex matcher (from grep.c, K&P "The Practice of Programming") =====
+
+int
+match(char *re, char *text)
+{
+  if (re[0] == '^')
+    return matchhere(re + 1, text);
+  do {
+    if (matchhere(re, text))
+      return 1;
+  } while (*text++ != '\0');
+  return 0;
+}
+
+int
+matchhere(char *re, char *text)
+{
+  if (re[0] == '\0')
+    return 1;
+  if (re[1] == '*')
+    return matchstar(re[0], re + 2, text);
+  if (re[0] == '$' && re[1] == '\0')
+    return *text == '\0';
+  if (*text != '\0' && (re[0] == '.' || re[0] == *text))
+    return matchhere(re + 1, text + 1);
+  return 0;
+}
+
+int
+matchstar(int c, char *re, char *text)
+{
+  do {
+    if (matchhere(re, text))
+      return 1;
+  } while (*text != '\0' && (*text++ == c || c == '.'));
+  return 0;
 }
