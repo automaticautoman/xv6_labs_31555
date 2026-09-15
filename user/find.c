@@ -1,9 +1,9 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
+#include "kernel/param.h"
 #include "user/user.h"
 #include "kernel/fs.h"
 
-// Return the last path component (the "base name") of path.
 static char*
 basename(char *path)
 {
@@ -11,6 +11,42 @@ basename(char *path)
   for(p = path + strlen(path); p >= path && *p != '/'; p--)
     ;
   return p + 1;
+}
+
+// -exec state (populated by main).
+static int do_exec = 0;
+static char *exec_cmd = 0;
+static char **exec_args = 0;
+static int exec_argc = 0;
+
+// Called for every match: either print, or fork+exec the command with the path appended.
+static void
+handle_match(char *path)
+{
+  if(!do_exec){
+    printf("%s\n", path);
+    return;
+  }
+
+  char *argv[MAXARG];
+  int n = 0;
+  argv[n++] = exec_cmd;
+  for(int i = 0; i < exec_argc; i++)
+    argv[n++] = exec_args[i];
+  argv[n++] = path;
+  argv[n] = 0;
+
+  int pid = fork();
+  if(pid < 0){
+    fprintf(2, "find: fork failed\n");
+    return;
+  }
+  if(pid == 0){
+    exec(exec_cmd, argv);
+    fprintf(2, "find: exec %s failed\n", exec_cmd);
+    exit(1);
+  }
+  wait(0);
 }
 
 static void
@@ -25,7 +61,6 @@ find(char *path, char *target)
     fprintf(2, "find: cannot open %s\n", path);
     return;
   }
-
   if(fstat(fd, &st) < 0){
     fprintf(2, "find: cannot stat %s\n", path);
     close(fd);
@@ -35,30 +70,25 @@ find(char *path, char *target)
   switch(st.type){
   case T_FILE:
     if(strcmp(basename(path), target) == 0)
-      printf("%s\n", path);
+      handle_match(path);
     break;
 
   case T_DIR:
-    // Check if this directory's own name matches.
     if(strcmp(basename(path), target) == 0)
-      printf("%s\n", path);
+      handle_match(path);
 
-    // Guard against path overflow when we append "/name".
     if(strlen(path) + 1 + DIRSIZ + 1 > sizeof(buf)){
       fprintf(2, "find: path too long\n");
       break;
     }
-
     strcpy(buf, path);
     p = buf + strlen(buf);
     *p++ = '/';
-
     while(read(fd, &de, sizeof(de)) == sizeof(de)){
       if(de.inum == 0)
         continue;
       if(strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
         continue;
-
       memmove(p, de.name, DIRSIZ);
       p[DIRSIZ] = 0;
       find(buf, target);
@@ -71,10 +101,23 @@ find(char *path, char *target)
 int
 main(int argc, char *argv[])
 {
-  if(argc != 3){
-    fprintf(2, "usage: find path name\n");
+  if(argc < 3){
+    fprintf(2, "usage: find path name [-exec cmd args...]\n");
     exit(1);
   }
+
+  // Optional -exec cmd args...
+  if(argc > 3){
+    if(strcmp(argv[3], "-exec") != 0 || argc < 5){
+      fprintf(2, "usage: find path name [-exec cmd args...]\n");
+      exit(1);
+    }
+    do_exec   = 1;
+    exec_cmd  = argv[4];
+    exec_args = &argv[5];
+    exec_argc = argc - 5;
+  }
+
   find(argv[1], argv[2]);
   exit(0);
 }
