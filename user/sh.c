@@ -1,6 +1,7 @@
 // Shell.
 
 #include "kernel/types.h"
+#include "kernel/stat.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
@@ -49,12 +50,21 @@ struct backcmd {
   struct cmd *cmd;
 };
 
-int fork1(void); // Fork but panics on failure.
+int fork1(void);
 void panic(char *);
 struct cmd *parsecmd(char *);
 void runcmd(struct cmd *) __attribute__((noreturn));
 
-// Execute cmd.  Never returns.
+// Return 1 if fd refers to a terminal (device), 0 otherwise.
+static int
+isatty(int fd)
+{
+  struct stat st;
+  if(fstat(fd, &st) < 0)
+    return 0;
+  return st.type == T_DEVICE;
+}
+
 void
 runcmd(struct cmd *cmd)
 {
@@ -134,7 +144,8 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf)
 {
-  write(2, "$ ", 2);
+  if (isatty(0))
+    write(2, "$ ", 2);
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if (buf[0] == 0) // EOF
@@ -148,7 +159,6 @@ main(void)
   static char buf[100];
   int fd;
 
-  // Ensure that three file descriptors are open.
   while ((fd = open("console", O_RDWR)) >= 0) {
     if (fd >= 3) {
       close(fd);
@@ -156,16 +166,14 @@ main(void)
     }
   }
 
-  // Read and run input commands.
   while (getcmd(buf, sizeof(buf)) >= 0) {
     char *cmd = buf;
     while (*cmd == ' ' || *cmd == '\t')
       cmd++;
-    if (*cmd == '\n') // is a blank command
+    if (*cmd == '\n')
       continue;
     if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
-      // Chdir must be called by the parent, not the child.
-      cmd[strlen(cmd) - 1] = 0; // chop \n
+      cmd[strlen(cmd) - 1] = 0;
       if (chdir(cmd + 3) < 0)
         fprintf(2, "cannot cd %s\n", cmd + 3);
     } else {
@@ -394,7 +402,7 @@ parseredirs(struct cmd *cmd, char **ps, char *es)
     case '>':
       cmd = redircmd(cmd, q, eq, O_WRONLY | O_CREATE | O_TRUNC, 1);
       break;
-    case '+': // >>
+    case '+':
       cmd = redircmd(cmd, q, eq, O_WRONLY | O_CREATE, 1);
       break;
     }
@@ -451,7 +459,6 @@ parseexec(char **ps, char *es)
   return ret;
 }
 
-// NUL-terminate all the counted strings.
 struct cmd *
 nulterminate(struct cmd *cmd)
 {
