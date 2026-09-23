@@ -187,6 +187,7 @@ UPROGS=\
 	$U/_mkdir\
 	$U/_rm\
 	$U/_sandbox\
+	$U/_sysinfotest\
 	$U/_sh\
 	$U/_stressfs\
 	$U/_usertests\

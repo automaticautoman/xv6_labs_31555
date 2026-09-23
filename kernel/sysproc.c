@@ -6,7 +6,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
-
+#include "sysinfo.h"
 uint64
 sys_exit(void)
 {
@@ -117,5 +117,22 @@ sys_interpose(void)
 
   p->syscall_mask = mask;
   safestrcpy(p->allowed_path, path, sizeof(p->allowed_path));
+  return 0;
+}
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 addr;
+  struct sysinfo info;
+  struct proc *p = myproc();
+
+  argaddr(0, &addr);
+
+  info.freemem = freemem();
+
+  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+    return -1;
+
   return 0;
 }
