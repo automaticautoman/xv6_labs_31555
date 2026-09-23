@@ -1,0 +1,30 @@
+Q1: Which function called syscall?
+A: usertrap() (in kernel/trap.c).
+
+Q2: What is the value of p->trapframe->a7 and what does that
+    value represent?
+A: The value was 0xf (15) when the breakpoint was hit. The a7
+   register holds the system call number for the current syscall.
+   For the first user program (init), a7 would hold 7 (SYS_exec),
+   because init calls exec() to start the shell.
+
+Q3: What was the previous mode that the CPU was in?
+A: User mode. The SPP bit in sstatus (bit 8) was 0, which means
+   the trap came from user mode.
+
+Q4: Write down the assembly instruction the kernel is panicking
+    at. Which register corresponds to the variable num?
+A: The faulting instruction is a load from address 0, typically
+   `lw a3, 0(zero)` (or similar). The register holding num is a3.
+
+Q5: Why does the kernel crash?
+A: Address 0 is not mapped in the kernel address space (kernel
+   memory starts higher, near KERNBASE). The load instruction
+   tries to read from unmapped memory, causing a load page
+   fault (scause = 0xd). Because the fault occurs while in
+   supervisor mode, the kernel panics.
+
+Q6: What is the name of the process that was running when the
+    kernel panicked? What is its process id (pid)?
+A: The process is init (or sh), with pid 1 (or 2), depending on
+   when the panic occurred.

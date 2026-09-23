@@ -287,6 +287,10 @@ kfork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
+  // Inherit sandbox restrictions from parent.
+  np->syscall_mask = p->syscall_mask;
+  safestrcpy(np->allowed_path, p->allowed_path, sizeof(np->allowed_path));
+
   pid = np->pid;
 
   release(&np->lock);
@@ -301,7 +305,6 @@ kfork(void)
 
   return pid;
 }
-
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
 void
